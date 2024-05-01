@@ -4,14 +4,20 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from mptt.models import MPTTModel, TreeForeignKey
 
+from apps.services.utils import unique_slugify
+
 STATUS_OPTIONS = (
     ('published', 'Опубликовано'),
     ('draft', 'Черновик')
 )
 
+class PostManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().select_related('author', 'category').filter(status='published')
+
 class Post(models.Model): #Модель постов блога
     title = models.CharField(max_length=255, verbose_name="Название")
-    slug = models.SlugField(verbose_name="URL", max_length=255, blank=True)
+    slug = models.SlugField(verbose_name='URL', max_length=255, blank=True)
     description = models.TextField(verbose_name="Краткое описание", max_length=500)
     text = models.TextField(verbose_name="Полный текст")
     thumbnail = models.ImageField(
@@ -28,6 +34,8 @@ class Post(models.Model): #Модель постов блога
     updater = models.ForeignKey(to=User, on_delete=models.SET_NULL, null=True, verbose_name="Обновил", related_name="updater_posts", blank=True)
     fixed = models.BooleanField(default=False, verbose_name="Прикреплено")
     category = TreeForeignKey('Category', on_delete=models.PROTECT, related_name="posts", verbose_name="Категория")
+    objects = models.Manager()
+    custom = PostManager()
 
     class Meta:
         db_table = "blog_post"
@@ -42,6 +50,11 @@ class Post(models.Model): #Модель постов блога
     def get_absolute_url(self):
         return reverse('post_detail', kwargs={'slug': self.slug})
 
+    def save(self, *args, **kwargs):
+
+        self.slug = unique_slugify(self, self.title, self.slug)
+        super().save(*args, **kwargs)
+
 class Category(MPTTModel): #Модель категории с вложенностью
     title = models.CharField(max_length=255, verbose_name="Название")
     slug = models.SlugField(max_length=255, verbose_name="URL", blank=True)
@@ -55,6 +68,9 @@ class Category(MPTTModel): #Модель категории с вложенно�
         verbose_name = "Категория"
         verbose_name_plural = "Категории"
         db_table = "app_categories"
+
+    def get_absolute_url(self):
+        return  reverse('post_by_category', kwargs={'slug': self.slug})
 
     def __str__(self):
         return self.title
